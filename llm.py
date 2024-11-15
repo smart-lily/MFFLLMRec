@@ -20,7 +20,7 @@ except:  # noqa: E722
 base_model = 'baffo32/decapoda-research-llama-7B-hf'
 model_type = 'alpaca-lora-7b'
 load_8bit = False
-lora_weights = './alpaca-lora-7B'
+lora_weights = './TALLRec/alpaca-lora-7B'
 
 tokenizer = LlamaTokenizer.from_pretrained(base_model)
 if device == "cuda":
