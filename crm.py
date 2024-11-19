@@ -1,5 +1,5 @@
+import ast
 import pandas as pd
-import numpy as np
 from surprise import SVD, Dataset, Reader
 
 #Initial
@@ -10,44 +10,51 @@ from surprise import SVD, Dataset, Reader
 #xxx.recommend(user_id)
 #return title of movies with rating above 3
 
-#attention:
-#numoy version may need to be under 2
 
 class MovieRecommender:
-    def __init__(self, path):
-        """
-        :param path: url of csv
-        """
-        self.ratings = pd.read_csv(path+'ratings.csv', sep='\t', encoding='latin-1', usecols=['user_id', 'movie_id', 'rating'])
-        self.movies = pd.read_csv(path+'movies.csv', sep='\t', encoding='latin-1', usecols=['movie_id', 'title'])
-
-        reader = Reader(rating_scale=(1, 5))
-        data = Dataset.load_from_df(self.ratings[['user_id', 'movie_id', 'rating']], reader)
-
-        self.trainset = data.build_full_trainset()
-        self.model = SVD(n_factors=80, n_epochs=40, biased=True, lr_all=0.01, reg_all=0.05)
-        self.model.fit(self.trainset)
-
+    def __init__(self, path, predictions_path="predictions.csv"):
+        self.predictions_path = predictions_path
+        self.movies= pd.read_csv(path + 'movies.csv', sep='\t', encoding='latin-1', usecols=['movie_id', 'title'])
         self.movie_id_to_title = dict(zip(self.movies['movie_id'], self.movies['title']))
 
-    def recommend(self, user_id, threshold=3):
-        """
-        :param threshold: movies with rating above threshold will be recommended
-        :return: movie title
-        """
-        if user_id not in self.ratings['user_id'].unique():
-            return f"User {user_id} do not exist！"
+        try:
+            self.predictions = pd.read_csv(self.predictions_path)
+            print("Predictions file exists. Loaded successfully!")
+        except FileNotFoundError:
+            print("Predictions file does not exist. Starting prediction...")
+            self._train_and_save_predictions(path)
 
-        all_movie_ids = self.movies['movie_id'].unique()
+    def _train_and_save_predictions(self, path):
+        ratings = pd.read_csv(path + 'ratings.csv', sep='\t', encoding='latin-1', usecols=['user_id', 'movie_id', 'rating'])
+        reader = Reader(rating_scale=(1, 5))
+        data = Dataset.load_from_df(ratings[['user_id', 'movie_id', 'rating']], reader)
+        trainset = data.build_full_trainset()
 
-        recommendations = []
-        for movie_id in all_movie_ids:
-            predicted_rating = self.model.predict(user_id, movie_id).est
-            rounded_rating = round(predicted_rating)
-            if rounded_rating > threshold:
-                recommendations.append((movie_id, rounded_rating))
+        model = SVD(n_factors=80, n_epochs=40, biased=True, lr_all=0.01, reg_all=0.05)
+        model.fit(trainset)
 
-        recommendations.sort(key=lambda x: x[0])
+        user_ids = [trainset.to_raw_uid(uid) for uid in trainset.all_users()]
+        movie_ids = [trainset.to_raw_iid(iid) for iid in trainset.all_items()]
 
-        recommended_titles = [self.movie_id_to_title[movie_id] for movie_id, _ in recommendations]
-        return recommended_titles
+        predictions = {}
+        for user_id in user_ids:
+            liked_movies = []
+            for movie_id in movie_ids:
+                predicted_rating = round(model.predict(user_id, movie_id).est)  # 四舍五入预测评分
+                if predicted_rating > 3:  # 只选择评分大于 3 的电影
+                    liked_movies.append(movie_id)
+            predictions[user_id] = liked_movies
+
+        self.predictions = pd.DataFrame(list(predictions.items()), columns=['user_id', 'movie_ids'])
+        self.predictions.to_csv(self.predictions_path, index=False)
+        print("Predictions saved!")
+        self.predictions = pd.read_csv(self.predictions_path)
+
+    def recommend(self, user_id):
+        user_predictions = self.predictions[self.predictions['user_id'] == user_id]
+        if user_predictions.empty:
+            return f"User {user_id} does not exist!"
+        movie_ids = ast.literal_eval(user_predictions.iloc[0]['movie_ids'])
+
+        movie_titles = [self.movie_id_to_title[movie_id] for movie_id in movie_ids if movie_id in self.movie_id_to_title]
+        return movie_titles
