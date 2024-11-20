@@ -1,5 +1,5 @@
-from crm import CRM
-from llm import LLRM
+from crm import MovieRecommender
+from llm import LLMRecommender
 
 def main():
     pass
