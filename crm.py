@@ -40,8 +40,8 @@ class MovieRecommender:
         for user_id in user_ids:
             liked_movies = []
             for movie_id in movie_ids:
-                predicted_rating = round(model.predict(user_id, movie_id).est)  # 四舍五入预测评分
-                if predicted_rating > 3:  # 只选择评分大于 3 的电影
+                predicted_rating = round(model.predict(user_id, movie_id).est)  
+                if predicted_rating > 3:  
                     liked_movies.append(movie_id)
             predictions[user_id] = liked_movies
 
