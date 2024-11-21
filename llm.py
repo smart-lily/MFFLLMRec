@@ -125,7 +125,7 @@ class LLMRecommender:
         s = generation_output.sequences
         output = self.tokenizer.batch_decode(s, skip_special_tokens=True)
         output = [_.split('Response:\n')[-1] for _ in output]
-        return output[0]
+        return output[0], logits[0].tolist()
 
 if __name__ == "__main__":
     recommender = LLMRecommender()

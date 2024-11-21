@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import kagglehub
+from tqdm import tqdm
 import os
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score
@@ -8,22 +9,14 @@ from crm import MovieRecommender
 from llm import LLMRecommender
 
 def prepare_data(save_path):
-    path = kagglehub.dataset_download("zygmunt/goodbooks-10k")
+    path = kagglehub.dataset_download("snehal1409/movielens")
     # load dataset
-    ratings = pd.read_csv(os.path.join(path, 'ratings.csv'))
-    movies = pd.read_csv(os.path.join(path, 'movies.csv'))
+    ratings = pd.read_csv(os.path.join(path, 'ratings.csv'), usecols=['userId', 'movieId', 'rating'])
+    movies= pd.read_csv(os.path.join(path, 'movies.csv'), usecols=['movieId', 'title'])
 
-    # drop duplicates
-    ratings = ratings.drop_duplicates(subset=['user_id', 'movie_id'])
-
-    # top 5000 users
-    user_votes = ratings['user_id'].value_counts().head(5000).index
-
-    # top 3000 books
-    book_ratings = ratings['movie_id'].value_counts().head(3000).index
-
-    # filter ratings
-    ratings = ratings[ratings['user_id'].isin(user_votes) & ratings['movie_id'].isin(book_ratings)]
+    # sample 100
+    ratings = ratings.sample(100)
+    movies = movies[movies['movieId'].isin(ratings['movieId'])]
 
     # split data into trainging and testing sets
     train, test = train_test_split(ratings, test_size=0.2, random_state=42)
@@ -37,22 +30,23 @@ def prepare_data(save_path):
     movies.to_csv(os.path.join(save_path, 'movies.csv'), index=False)
 
 def main():
-    data_path = 'data/movie/'
+    data_path = './data/movie/'
     prepare_data(data_path)
-    movies= pd.read_csv(data_path + 'movies.csv', sep='\t', encoding='latin-1', usecols=['movie_id', 'title'])
-    movie_id_to_title = dict(zip(movies['movie_id'], movies['title']))
+    movies= pd.read_csv(data_path + 'movies.csv')
+    movie_id_to_title = dict(zip(movies['movieId'], movies['title']))
     test = pd.read_csv(os.path.join(data_path, 'test.csv'))
-    movie_recommender = MovieRecommender('data/movie')
+    movie_recommender = MovieRecommender(data_path)
     llm_recommender = LLMRecommender()
     instructions=["Given the user's preference, identify whether the user will like the target movie by answering \"Yes.\" or \"No.\"."]
     inputs=["User Preference: <PREFERENCE>\nWhether the user will like the target movie <TARGET>?"]
 
     predictions = []
-    for user in test:
-        recommendations = movie_recommender.recommend(user['user_id'])
-        inputs = inputs.replace('<PREFERENCE>', ' '.join(recommendations)).replace('<TARGET>', movie_id_to_title[user['moive_id']])
-        ans = llm_recommender.recommend(instructions, inputs).split('\n')[0]
-        predictions.append(1 if ans == 'Yes' else 0)
+    for index, row in tqdm(test.iterrows(), total=len(test)):
+        recommendations = movie_recommender.recommend(row['userId'])
+        inputs = [input.replace('<PREFERENCE>', ' '.join(recommendations)).replace('<TARGET>', movie_id_to_title[row['movieId']])for input in inputs]
+        ans, logits = llm_recommender.recommend(instructions, inputs).split('\n')[0]
+        print(ans)
+        predictions.append(logits[0])
 
     #caculate auc
     auc = roc_auc_score(test['rating'], predictions)
