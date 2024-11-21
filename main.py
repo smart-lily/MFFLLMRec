@@ -14,12 +14,19 @@ def prepare_data(save_path):
     ratings = pd.read_csv(os.path.join(path, 'ratings.csv'), usecols=['userId', 'movieId', 'rating'])
     movies= pd.read_csv(os.path.join(path, 'movies.csv'), usecols=['movieId', 'title'])
 
-    # sample 100
-    ratings = ratings.sample(100)
-    movies = movies[movies['movieId'].isin(ratings['movieId'])]
+    # change the arttribute names
+    ratings.columns = ['user_id', 'movie_id', 'rating']
+    movies.columns = ['movie_id', 'title']
+
+    # sample 100 users
+    ratings = ratings[ratings['user_id'].isin(ratings['user_id'].sample(100, random_state=42))]
+    movies = movies[movies['movie_id'].isin(ratings['movie_id'])]
 
     # split data into trainging and testing sets
-    train, test = train_test_split(ratings, test_size=0.2, random_state=42)
+    train, test = train_test_split(ratings, test_size=0.1, random_state=42)
+
+    # make sure all movies in test set are in training set
+    test = test[test['movie_id'].isin(train['movie_id'])]
     
     # convert test to binary
     test['rating'] = np.where(test['rating'] > 3, 1, 0)
@@ -33,7 +40,7 @@ def main():
     data_path = './data/movie/'
     prepare_data(data_path)
     movies= pd.read_csv(data_path + 'movies.csv')
-    movie_id_to_title = dict(zip(movies['movieId'], movies['title']))
+    movie_id_to_title = dict(zip(movies['movie_id'], movies['title']))
     test = pd.read_csv(os.path.join(data_path, 'test.csv'))
     movie_recommender = MovieRecommender(data_path)
     llm_recommender = LLMRecommender()
@@ -42,7 +49,7 @@ def main():
 
     predictions = []
     for index, row in tqdm(test.iterrows(), total=len(test)):
-        recommendations = movie_recommender.recommend(row['userId'])
+        recommendations = movie_recommender.recommend(row['user_id'])
         inputs = [input.replace('<PREFERENCE>', ' '.join(recommendations)).replace('<TARGET>', movie_id_to_title[row['movieId']])for input in inputs]
         ans, logits = llm_recommender.recommend(instructions, inputs).split('\n')[0]
         print(ans)
